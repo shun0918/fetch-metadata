@@ -21,6 +21,24 @@ export async function run (): Promise<void> {
   try {
     const githubClient = github.getOctokit(token)
 
+    // Note: Please be aware that overwriting github.context might impact the behavior.
+    // This code assumes Github Actions is intended to be triggered only when using workflow_run.
+    // If other triggers are expected, additional adjustments may be needed.
+    if (!github.context.payload.pull_request && github.context.eventName === 'workflow_run') {
+      core.warning( "Event payload missing `pull_request` key.")
+
+      let prNumber = Number(core.getInput('pr-number'))
+      if (prNumber) {
+        core.debug(`Using PR number ${prNumber} instead of payload`)
+        const { data: prData } = await githubClient.rest.pulls.get({
+          owner: github.context.repo.owner,
+          repo: github.context.repo.repo,
+          pull_number: prNumber
+        })
+        github.context.payload.pull_request = { ...prData, body: prData.body ?? undefined };
+      }
+    }
+
     // Validate the job
     const commitMessage = await verifiedCommits.getMessage(githubClient, github.context, core.getBooleanInput('skip-commit-verification'), core.getBooleanInput('skip-verification'))
     const branchNames = util.getBranchNames(github.context)
