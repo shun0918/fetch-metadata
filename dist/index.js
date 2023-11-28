@@ -10049,6 +10049,34 @@ function maxSemver(updatedDependencies) {
 
 /***/ }),
 
+/***/ 2123:
+/***/ (function(__unused_webpack_module, exports) {
+
+"use strict";
+
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getPullRequest = void 0;
+const getPullRequest = (client, context, prNumber) => __awaiter(void 0, void 0, void 0, function* () {
+    return (yield client.rest.pulls.get({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        pull_number: prNumber
+    })).data;
+});
+exports.getPullRequest = getPullRequest;
+
+
+/***/ }),
+
 /***/ 9553:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -10357,7 +10385,9 @@ const verifiedCommits = __importStar(__nccwpck_require__(1035));
 const updateMetadata = __importStar(__nccwpck_require__(9553));
 const output = __importStar(__nccwpck_require__(8434));
 const util = __importStar(__nccwpck_require__(6454));
+const pullRequest = __importStar(__nccwpck_require__(2123));
 function run() {
+    var _a;
     return __awaiter(this, void 0, void 0, function* () {
         const token = core.getInput('github-token');
         if (!token) {
@@ -10368,6 +10398,18 @@ function run() {
         }
         try {
             const githubClient = github.getOctokit(token);
+            // Note: Please be aware that overwriting github.context might impact the behavior.
+            // This code assumes Github Actions is intended to be triggered only when using workflow_run.
+            // If other triggers are expected, additional adjustments may be needed.
+            if (!github.context.payload.pull_request && github.context.eventName === 'workflow_run') {
+                core.warning('Event payload missing `pull_request` key.');
+                const prNumber = Number(core.getInput('pr-number'));
+                if (prNumber) {
+                    core.debug(`Using PR number ${prNumber} instead of payload`);
+                    const prData = yield pullRequest.getPullRequest(githubClient, github.context, prNumber);
+                    github.context.payload.pull_request = Object.assign(Object.assign({}, prData), { body: (_a = prData.body) !== null && _a !== void 0 ? _a : undefined });
+                }
+            }
             // Validate the job
             const commitMessage = yield verifiedCommits.getMessage(githubClient, github.context, core.getBooleanInput('skip-commit-verification'), core.getBooleanInput('skip-verification'));
             const branchNames = util.getBranchNames(github.context);
