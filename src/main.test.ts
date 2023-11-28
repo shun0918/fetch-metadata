@@ -3,6 +3,8 @@ import { run } from './main'
 import { RequestError } from '@octokit/request-error'
 import * as dependabotCommits from './dependabot/verified_commits'
 import * as util from './dependabot/util'
+import * as pullRequest from './dependabot/pull_request'
+import * as github from '@actions/github'
 
 beforeEach(() => {
   jest.restoreAllMocks()
@@ -528,4 +530,63 @@ test('it sets the action to failed if there is a request error', async () => {
   /* eslint-disable no-unused-expressions */
   expect(dependabotCommits.getAlert).not.toHaveBeenCalled
   /* eslint-enable no-unused-expressions */
+})
+
+describe('works with `workflow_run` event', () => {
+  let beforePullRequest
+  let beforeEventName
+  beforeEach(() => {
+    beforePullRequest = github.context.payload.pull_request
+    beforeEventName = github.context.eventName
+    github.context.payload.pull_request = undefined
+    github.context.eventName = 'workflow_run'
+  })
+  afterEach(() => {
+    github.context.payload.pull_request = beforePullRequest
+    github.context.eventName = beforeEventName
+  })
+  test('it can run on `workflow_run` if pull request number is provided', async () => {
+    const mockCommitMessage =
+    'Bumps [coffee-rails](https://github.com/rails/coffee-rails) from v4.0.1 to v4.2.2.\n' +
+    '- [Release notes](https://github.com/rails/coffee-rails/releases)\n' +
+    '- [Changelog](https://github.com/rails/coffee-rails/blob/master/CHANGELOG.md)\n' +
+    '- [Commits](rails/coffee-rails@v4.0.1...v4.2.2)\n' +
+    '\n' +
+    '---\n' +
+    'updated-dependencies:\n' +
+    '- dependency-name: coffee-rails\n' +
+    '  dependency-type: direct:production\n' +
+    '...\n' +
+    '\n' +
+    'Signed-off-by: dependabot[bot] <support@github.com>'
+
+    jest.spyOn(core, 'getInput').mockImplementation((name) => name === 'github-token' ? 'mock-token' : name === 'pr-number' ? '101' : '')
+    jest.spyOn(util, 'getBranchNames').mockReturnValue({ headName: 'dependabot|nuget|feature1', baseName: 'main' })
+    jest.spyOn(pullRequest, 'getPullRequest').mockImplementation(jest.fn().mockResolvedValue({
+      number: 101,
+      user: {
+        login: 'dependabot[bot]'
+      }
+    }))
+    const mockGetMessage = jest.fn().mockResolvedValue(mockCommitMessage)
+    jest.spyOn(dependabotCommits, 'getMessage').mockImplementation(mockGetMessage)
+    jest.spyOn(dependabotCommits, 'getAlert').mockImplementation(jest.fn(
+      () => Promise.resolve({ alertState: '', ghsaId: '', cvss: 0 })
+    ))
+    jest.spyOn(dependabotCommits, 'getCompatibility').mockImplementation(jest.fn(
+      () => Promise.resolve(34)
+    ))
+    jest.spyOn(core, 'setOutput').mockImplementation(jest.fn())
+
+    await run()
+
+    // `github.context` is the 2nd argument.
+    const githubContext = mockGetMessage.mock.calls[0][1]
+    expect(githubContext.payload.pull_request).toEqual(expect.objectContaining({
+      number: 101,
+      user: {
+        login: 'dependabot[bot]'
+      }
+    }))
+  })
 })

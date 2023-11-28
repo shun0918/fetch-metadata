@@ -5,6 +5,7 @@ import * as verifiedCommits from './dependabot/verified_commits'
 import * as updateMetadata from './dependabot/update_metadata'
 import * as output from './dependabot/output'
 import * as util from './dependabot/util'
+import * as pullRequest from './dependabot/pull_request'
 
 export async function run (): Promise<void> {
   const token = core.getInput('github-token')
@@ -25,17 +26,13 @@ export async function run (): Promise<void> {
     // This code assumes Github Actions is intended to be triggered only when using workflow_run.
     // If other triggers are expected, additional adjustments may be needed.
     if (!github.context.payload.pull_request && github.context.eventName === 'workflow_run') {
-      core.warning( "Event payload missing `pull_request` key.")
+      core.warning('Event payload missing `pull_request` key.')
 
-      let prNumber = Number(core.getInput('pr-number'))
+      const prNumber = Number(core.getInput('pr-number'))
       if (prNumber) {
         core.debug(`Using PR number ${prNumber} instead of payload`)
-        const { data: prData } = await githubClient.rest.pulls.get({
-          owner: github.context.repo.owner,
-          repo: github.context.repo.repo,
-          pull_number: prNumber
-        })
-        github.context.payload.pull_request = { ...prData, body: prData.body ?? undefined };
+        const prData = await pullRequest.getPullRequest(githubClient, github.context, prNumber)
+        github.context.payload.pull_request = { ...prData, body: prData.body ?? undefined }
       }
     }
 
